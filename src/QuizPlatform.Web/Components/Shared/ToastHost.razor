@@ -1,0 +1,45 @@
+@implements IDisposable
+
+<CascadingValue Value="_api">
+    @ChildContent
+</CascadingValue>
+
+<div class="toasts" role="status" aria-live="polite">
+    @foreach (var t in _toasts)
+    {
+        <div class="toast @t.Kind" @key="t.Id">@t.Message</div>
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private sealed record Toast(int Id, string Message, string Kind);
+
+    private readonly CancellationTokenSource _cts = new();
+    private ImmutableList<Toast> _toasts = ImmutableList<Toast>.Empty;
+    private ToastApi _api = default!;
+    private int _nextId;
+
+    protected override void OnInitialized() => _api = new ToastApi(Add);
+
+    private void Add(string message, string kind)
+    {
+        var toast = new Toast(++_nextId, message, kind);
+        _ = InvokeAsync(async () =>
+        {
+            _toasts = _toasts.Add(toast);
+            StateHasChanged();
+            try { await Task.Delay(TimeSpan.FromSeconds(4), _cts.Token); }
+            catch (OperationCanceledException) { return; }
+            _toasts = _toasts.Remove(toast);
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

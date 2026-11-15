@@ -1,0 +1,86 @@
+@page "/stats"
+@inherits StateAwareComponent
+@inject QuizService Svc
+
+<PageTitle>My stats</PageTitle>
+<h1>My stats</h1>
+
+@if (!State.IsSignedIn)
+{
+    <div class="card"><p>Please <a href="">sign in</a> to see your statistics.</p></div>
+}
+else if (_mine.IsEmpty)
+{
+    <div class="card"><p>You have not completed any quiz yet. <a href="quizzes">Take your first quiz</a>.</p></div>
+}
+else
+{
+    <section class="grid cols-4">
+        <StatCard Icon="🎯" Label="Attempts" Value="@_mine.Length.ToString()" />
+        <StatCard Icon="📈" Label="Average score" Value="@Presenter.Percent(Analytics.AveragePercent(_mine))" />
+        <StatCard Icon="🏅" Label="Best score" Value="@Presenter.Percent(Analytics.Best(_mine).Map(a => a.Percent).GetOrElse(0))" />
+        <StatCard Icon="🔥" Label="Longest correct run" Value="@Analytics.LongestCorrectRun(_mine).ToString()" />
+    </section>
+
+    <h2>Accuracy by topic</h2>
+    <div class="card">
+        @foreach (var t in Analytics.ByTopic(_mine))
+        {
+            <ProgressBar Value="@t.Accuracy" Label="@($"{t.Topic} ({t.Correct}/{t.Answered})")" CssClass="@(t.Accuracy < 60 ? "bad" : "")" />
+        }
+        <p class="muted">Weakest topics are listed first - practise those next.</p>
+    </div>
+
+    @if (!Trend.IsEmpty)
+    {
+        <h2>Progress between attempts</h2>
+        <div class="card">
+            <p>
+                @foreach (var d in Trend)
+                {
+                    <span class="badge @(d >= 0 ? "ok-badge" : "bad-badge")">@Presenter.Signed(d)</span>
+                }
+            </p>
+        </div>
+    }
+
+    <h2>History</h2>
+    <DataList Items="_mine.OrderByDescending(a => a.FinishedAt)" TItem="Attempt">
+        <ItemTemplate Context="a">
+            <a class="card history" href="results/@a.Id">
+                <span><b>@a.QuizTitle</b><br /><small class="muted">@a.FinishedAt.ToLocalTime().ToString("g", CultureInfo.InvariantCulture)</small></span>
+                <span>@Presenter.Percent(a.Percent) · @Scoring.Letter(a.Percent)</span>
+            </a>
+        </ItemTemplate>
+    </DataList>
+}
+
+@if (State.IsTeacher)
+{
+    <h2>Hardest questions (all students)</h2>
+    <div class="card">
+        <DataList Items="Analytics.HardestQuestions(Svc.Attempts, 5)" TItem="QuestionStat">
+            <ItemTemplate Context="s">
+                <div class="history">
+                    <span>@QuestionText(s.QuestionId)</span>
+                    <span class="badge bad-badge">@Presenter.Percent(s.Accuracy) correct (@s.Answered answers)</span>
+                </div>
+            </ItemTemplate>
+        </DataList>
+    </div>
+}
+
+@code {
+    private ImmutableArray<Attempt> _mine = ImmutableArray<Attempt>.Empty;
+
+    private ImmutableArray<double> Trend => Analytics.Trend(_mine);
+
+    protected override void OnParametersSet() => Load();
+    protected override void OnStateChanged() => Load();
+
+    private void Load() =>
+        _mine = State.IsSignedIn ? Svc.AttemptsBy(State.Player) : ImmutableArray<Attempt>.Empty;
+
+    private string QuestionText(string id) =>
+        Svc.Quizzes.SelectMany(q => q.Questions).FirstOrDefault(q => q.Id == id)?.Text ?? id;
+}

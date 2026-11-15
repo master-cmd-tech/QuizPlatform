@@ -1,0 +1,18 @@
+<div class="progress-wrap">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <div class="progress-label"><span>@Label</span><span>@Percent%</span></div>
+    }
+    <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@Percent" aria-label="@(Label ?? "Progress")">
+        <div class="progress-fill @CssClass" style="width:@Percent%"></div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public double Value { get; set; }
+    [Parameter] public double Max { get; set; } = 100;
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string CssClass { get; set; } = "";
+
+    private int Percent => Max <= 0 ? 0 : (int)Math.Round(Math.Clamp(100.0 * Value / Max, 0, 100));
+}

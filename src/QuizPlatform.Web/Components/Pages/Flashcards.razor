@@ -1,0 +1,87 @@
+@page "/flashcards"
+@inherits StateAwareComponent
+@inject QuizService Svc
+
+<PageTitle>Flashcards</PageTitle>
+<h1>Flashcards</h1>
+
+@if (!State.IsSignedIn)
+{
+    <div class="card"><p>Please <a href="">sign in</a> so your review schedule can be saved.</p></div>
+}
+else if (_index >= _due.Length)
+{
+    <div class="card narrow" role="status">
+        <h2>@(_reviewed > 0 ? "All done for today 🎉" : "Nothing is due right now")</h2>
+        <p>Reviewed this session: <b>@_reviewed</b>. Cards come back when the spaced-repetition algorithm
+           (SM-2) says you are about to forget them.</p>
+        <a class="btn" href="quizzes">Take a quiz instead</a>
+    </div>
+}
+else
+{
+    var card = _due[_index];
+    <ProgressBar Value="@_index" Max="@_due.Length" Label="@($"Card {_index + 1} of {_due.Length}")" />
+
+    <button type="button" class="flashcard @(_flipped ? "flipped" : "")" aria-live="polite"
+            @onclick="() => _flipped = !_flipped">
+        <span class="badge">@card.Topic</span>
+        <span class="flash-text">@(_flipped ? card.Back : card.Front)</span>
+        <span class="muted">@(_flipped ? "Answer" : "Click to reveal the answer")</span>
+    </button>
+
+    @if (_flipped)
+    {
+        <p class="center">How well did you remember it?</p>
+        <div class="actions wrap center">
+            <button type="button" class="btn danger" disabled="@_busy" @onclick="() => Rate(1)">Again</button>
+            <button type="button" class="btn" disabled="@_busy" @onclick="() => Rate(3)">Hard</button>
+            <button type="button" class="btn primary" disabled="@_busy" @onclick="() => Rate(4)">Good</button>
+            <button type="button" class="btn" disabled="@_busy" @onclick="() => Rate(5)">Easy</button>
+        </div>
+    }
+}
+
+@code {
+    private ImmutableArray<Flashcard> _due = ImmutableArray<Flashcard>.Empty;
+    private int _index, _reviewed;
+    private bool _flipped, _busy;
+    private string? _loadedFor;
+
+    [CascadingParameter] public ToastApi? Toasts { get; set; }
+
+    protected override void OnParametersSet() => Load();
+
+    protected override void OnStateChanged() => Load();
+
+    private void Load()
+    {
+        if (_loadedFor == State.Player) return;
+        _loadedFor = State.Player;
+        _due = State.IsSignedIn ? Svc.DueCards(State.Player) : ImmutableArray<Flashcard>.Empty;
+        _index = 0;
+        _reviewed = 0;
+        _flipped = false;
+    }
+
+    private async Task Rate(int quality)
+    {
+        if (_busy || _index >= _due.Length) return;
+        _busy = true;
+        try
+        {
+            await Svc.ReviewCardAsync(State.Player, _due[_index].Id, quality);
+            _reviewed++;
+            _index++;
+            _flipped = false;
+        }
+        catch (Exception)
+        {
+            Toasts?.Error("Could not save your review. Please try again.");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

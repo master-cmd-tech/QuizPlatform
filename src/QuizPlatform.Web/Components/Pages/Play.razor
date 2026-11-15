@@ -1,0 +1,148 @@
+@page "/quiz/{Id}"
+@inherits StateAwareComponent
+@inject QuizService Svc
+@inject IClock Clock
+@inject NavigationManager Nav
+@inject ILogger<Play> Logger
+
+<PageTitle>@(_quiz?.Title ?? "Quiz")</PageTitle>
+
+@if (_quiz is null)
+{
+    <div class="card">
+        <h1>Quiz not found</h1>
+        <a class="btn" href="quizzes">Back to quizzes</a>
+    </div>
+}
+else if (!State.IsSignedIn)
+{
+    <div class="card">
+        <h1>@_quiz.Title</h1>
+        <p>Please <a href="">sign in</a> to take this quiz.</p>
+    </div>
+}
+else if (_session is null)
+{
+    <div class="card narrow">
+        <h1>@_quiz.Title</h1>
+        <p>@_quiz.Description</p>
+        <ul>
+            <li>@_quiz.Questions.Length questions, up to @_quiz.MaxScore points</li>
+            <li>@(_quiz.SecondsPerQuestion == 0 ? "No time limit" : $"{_quiz.SecondsPerQuestion} seconds per question")</li>
+            <li>Streak bonus: every correct answer in a row adds extra points.</li>
+        </ul>
+        <label class="check"><input type="checkbox" @bind="_shuffle" /> Shuffle question order</label>
+        <div class="actions">
+            <button type="button" class="btn primary" @onclick="Start">Start quiz</button>
+            <a class="btn" href="quizzes">Cancel</a>
+        </div>
+    </div>
+}
+else if (_session.IsFinished && _feedback is null)
+{
+    <div class="card narrow" role="status">
+        <h2>@(_error is null ? "Saving your result..." : "Could not save")</h2>
+        @if (_error is not null)
+        {
+            <p class="msg error" role="alert">@_error</p>
+            <button type="button" class="btn primary" @onclick="Finish">Try again</button>
+        }
+    </div>
+}
+else if (_shown is not null)
+{
+    <h1>@_quiz.Title</h1>
+    <ProgressBar Value="@_session.Answers.Length" Max="@_session.Order.Length"
+                 Label="@($"Question {Math.Min(_session.Answers.Length + (_feedback is null ? 1 : 0), _session.Order.Length)} of {_session.Order.Length}")" />
+
+    @if (_quiz.SecondsPerQuestion > 0 && _feedback is null)
+    {
+        <CountdownTimer Seconds="_quiz.SecondsPerQuestion" ResetKey="@_shown.Id" OnElapsed="OnTimeout" />
+    }
+
+    <QuestionView Question="_shown" Feedback="_feedback" OnSubmit="HandleSubmit">
+        <Actions>
+            <button type="button" class="btn primary" @onclick="Next">
+                @(_session.IsFinished ? "Finish quiz" : "Next question")
+            </button>
+        </Actions>
+    </QuestionView>
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+
+    private Quiz? _quiz;
+    private QuizSession? _session;
+    private Question? _shown;
+    private GradedAnswer? _feedback;
+    private DateTimeOffset _questionStart;
+    private bool _shuffle;
+    private string? _error;
+    private string? _loadedId;
+
+    protected override void OnParametersSet()
+    {
+        if (_loadedId == Id) return;
+        _loadedId = Id;
+        _quiz = Svc.FindQuiz(Id).GetOrDefault();
+        _session = null;
+        _shown = null;
+        _feedback = null;
+        _error = null;
+    }
+
+    private void Start()
+    {
+        if (_quiz is null) return;
+        var seed = _shuffle ? Option<int>.Some(Random.Shared.Next()) : Option<int>.None;
+        _session = QuizSession.Start(_quiz, State.Player, Clock.Now, seed);
+        _shown = _session.Current.GetOrDefault();
+        _questionStart = Clock.Now;
+    }
+
+    private void HandleSubmit(Answer answer) => Record(answer);
+
+    private Task OnTimeout()
+    {
+        Record(null);
+        return Task.CompletedTask;
+    }
+
+    private void Record(Answer? answer)
+    {
+        if (_session is null || _feedback is not null || _session.IsFinished) return;
+        var seconds = Math.Round((Clock.Now - _questionStart).TotalSeconds, 1);
+        _session = _session.Submit(answer, seconds);
+        _feedback = _session.Answers[_session.Answers.Length - 1];
+    }
+
+    private async Task Next()
+    {
+        _feedback = null;
+        if (_session is null) return;
+        if (_session.IsFinished)
+        {
+            await Finish();
+            return;
+        }
+        _shown = _session.Current.GetOrDefault();
+        _questionStart = Clock.Now;
+    }
+
+    private async Task Finish()
+    {
+        if (_session is null) return;
+        try
+        {
+            _error = null;
+            var attempt = await Svc.CompleteAsync(_session);
+            Nav.NavigateTo($"results/{attempt.Id}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Could not save attempt for quiz {QuizId}", Id);
+            _error = "Your answers are safe on this page, but saving failed. Please try again.";
+        }
+    }
+}

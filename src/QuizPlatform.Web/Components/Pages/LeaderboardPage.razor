@@ -1,0 +1,96 @@
+@page "/leaderboard"
+@page "/leaderboard/{QuizId}"
+@inherits StateAwareComponent
+@inject QuizService Svc
+@inject LiveFeed Feed
+@inject NavigationManager Nav
+
+<PageTitle>Leaderboard</PageTitle>
+<h1>Leaderboard</h1>
+
+<div class="toolbar">
+    <label for="lb-quiz" class="sr-only">Quiz</label>
+    <select id="lb-quiz" class="input" value="@QuizId" @onchange="OnQuizChanged">
+        <option value="">All quizzes</option>
+        @foreach (var q in Svc.Quizzes)
+        {
+            <option value="@q.Id">@q.Title</option>
+        }
+    </select>
+    <span class="badge ok-badge">● Live</span>
+</div>
+
+<div aria-live="polite" class="live-note">@_lastEvent</div>
+
+@if (_entries.IsEmpty)
+{
+    <div class="card"><p class="muted">No attempts yet - be the first on the board!</p></div>
+}
+else
+{
+    <div class="table-wrap">
+        <table class="table">
+            <caption class="sr-only">Top players</caption>
+            <thead>
+                <tr><th scope="col">#</th><th scope="col">Player</th><th scope="col">Points</th><th scope="col">Score</th><th scope="col">Time</th><th scope="col">Attempts</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var e in _entries)
+                {
+                    <tr class="@(IsMe(e) ? "me" : "")">
+                        <td>@Medal(e.Rank)</td>
+                        <td>@e.Player</td>
+                        <td><b>@e.TotalPoints</b></td>
+                        <td>@Presenter.Percent(e.Percent)</td>
+                        <td>@Presenter.Duration(e.Duration)</td>
+                        <td>@e.Attempts</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Parameter] public string? QuizId { get; set; }
+
+    private ImmutableArray<LeaderboardEntry> _entries = ImmutableArray<LeaderboardEntry>.Empty;
+    private string? _lastEvent;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Feed.AttemptCompleted += OnAttempt;
+    }
+
+    protected override void OnParametersSet() => Refresh();
+
+    private void Refresh() => _entries = Svc.Leaderboard(string.IsNullOrEmpty(QuizId) ? null : QuizId);
+
+    private void OnAttempt(Attempt attempt)
+    {
+        _ = InvokeAsync(() =>
+        {
+            Refresh();
+            _lastEvent = $"{attempt.Player} just scored {attempt.TotalPoints} points on \"{attempt.QuizTitle}\".";
+            StateHasChanged();
+        });
+    }
+
+    private void OnQuizChanged(ChangeEventArgs e)
+    {
+        var id = e.Value?.ToString();
+        Nav.NavigateTo(string.IsNullOrEmpty(id) ? "leaderboard" : $"leaderboard/{id}");
+    }
+
+    private bool IsMe(LeaderboardEntry e) =>
+        State.IsSignedIn && string.Equals(e.Player, State.Player, StringComparison.OrdinalIgnoreCase);
+
+    private static string Medal(int rank) => rank switch { 1 => "🥇", 2 => "🥈", 3 => "🥉", _ => rank.ToString() };
+
+    public override void Dispose()
+    {
+        Feed.AttemptCompleted -= OnAttempt;
+        base.Dispose();
+    }
+}

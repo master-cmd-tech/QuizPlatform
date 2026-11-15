@@ -1,0 +1,102 @@
+@page "/practice"
+@inherits StateAwareComponent
+@inject QuizService Svc
+
+<PageTitle>Adaptive practice</PageTitle>
+<h1>Adaptive practice</h1>
+
+@if (!_started)
+{
+    <div class="card narrow">
+        <p>Questions get harder when you answer correctly twice in a row, and easier after a mistake.
+           Practice does not affect the leaderboard.</p>
+        <div class="field">
+            <label for="topic">Topic</label>
+            <select id="topic" class="input" @bind="_topic">
+                <option value="">All topics</option>
+                @foreach (var t in Topics)
+                {
+                    <option value="@t">@t</option>
+                }
+            </select>
+        </div>
+        <button type="button" class="btn primary" @onclick="Start">Start practice</button>
+    </div>
+}
+else if (_current is null)
+{
+    <div class="card narrow" role="status">
+        <h2>Session complete 🎉</h2>
+        <p>You answered <b>@_correct</b> of <b>@_answered</b> questions correctly. No unseen questions are left for this topic.</p>
+        <button type="button" class="btn primary" @onclick="Start">Practice again</button>
+    </div>
+}
+else
+{
+    <div class="q-meta">
+        <span class="badge">Level: @_level</span>
+        <span class="badge">Streak: @_streak 🔥</span>
+        <span class="badge">@_correct / @_answered correct</span>
+    </div>
+
+    <QuestionView Question="_current" Feedback="_feedback" OnSubmit="HandleSubmit">
+        <Actions>
+            <button type="button" class="btn primary" @onclick="Next">Next question</button>
+            <button type="button" class="btn" @onclick="Stop">Stop</button>
+        </Actions>
+    </QuestionView>
+}
+
+@code {
+    private string _topic = "";
+    private bool _started;
+    private ImmutableArray<Question> _pool = ImmutableArray<Question>.Empty;
+    private ImmutableHashSet<string> _seen = ImmutableHashSet<string>.Empty;
+    private Difficulty _level = Difficulty.Easy;
+    private int _streak, _answered, _correct;
+    private Question? _current;
+    private GradedAnswer? _feedback;
+
+    private IEnumerable<string> Topics =>
+        Svc.Quizzes.SelectMany(q => q.Questions).Select(q => q.Topic).Distinct().Order();
+
+    private void Start()
+    {
+        _pool = Svc.Quizzes.SelectMany(q => q.Questions)
+            .Where(q => _topic == "" || q.Topic == _topic)
+            .ToImmutableArray();
+        _seen = ImmutableHashSet<string>.Empty;
+        _level = Difficulty.Easy;
+        _streak = _answered = _correct = 0;
+        _feedback = null;
+        _started = true;
+        PickNext();
+    }
+
+    private void PickNext() =>
+        _current = AdaptiveEngine.PickQuestion(_pool, _level, _seen, Random.Shared.Next()).GetOrDefault();
+
+    private void HandleSubmit(Answer answer)
+    {
+        if (_current is null || _feedback is not null) return;
+        var graded = Grader.Grade(_current, answer, 0);
+        _feedback = graded;
+        _answered++;
+        _streak = graded.IsCorrect ? _streak + 1 : 0;
+        if (graded.IsCorrect) _correct++;
+        _level = AdaptiveEngine.Next(_level, graded.IsCorrect, _streak);
+        _seen = _seen.Add(_current.Id);
+    }
+
+    private void Next()
+    {
+        _feedback = null;
+        PickNext();
+    }
+
+    private void Stop()
+    {
+        _feedback = null;
+        _current = null;
+    }
+}

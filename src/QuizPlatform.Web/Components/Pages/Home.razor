@@ -1,0 +1,81 @@
+@page "/"
+@inherits StateAwareComponent
+@inject QuizService Svc
+@inject AccessService Access
+
+<PageTitle>QuizLab - Interactive Learning and Quiz Platform</PageTitle>
+
+<section class="hero">
+    <h1>Learn it. Quiz it. Master it.</h1>
+    <p>QuizLab combines short lessons, timed quizzes, adaptive practice and spaced-repetition flashcards
+       in one platform, written in a functional style with C# and Blazor.</p>
+</section>
+
+<section class="grid cols-4" aria-label="Platform statistics">
+    <StatCard Icon="📝" Label="Quizzes" Value="@Svc.Quizzes.Length.ToString()" />
+    <StatCard Icon="🃏" Label="Flashcards" Value="@Svc.TotalCards.ToString()" />
+    <StatCard Icon="✅" Label="Attempts played" Value="@Svc.Attempts.Length.ToString()" />
+    <StatCard Icon="👥" Label="Players" Value="@(Svc.Attempts.Select(a => a.Player.ToLowerInvariant()).Distinct().Count().ToString())" />
+</section>
+
+@if (!State.IsSignedIn)
+{
+    <section class="card narrow">
+        <h2>Sign in</h2>
+        <div class="field">
+            <label for="name">Your name</label>
+            <input id="name" class="input" maxlength="30" autocomplete="nickname"
+                   @bind="_name" @bind:event="oninput" @onkeydown="OnKey" />
+        </div>
+        <div class="field">
+            <label for="role">Role</label>
+            <select id="role" class="input" @bind="_role">
+                <option value="@Role.Student">Student</option>
+                <option value="@Role.Teacher">Teacher</option>
+            </select>
+        </div>
+        @if (_role == Role.Teacher)
+        {
+            <div class="field">
+                <label for="code">Teacher code</label>
+                <input id="code" type="password" class="input" autocomplete="off" @bind="_code" @onkeydown="OnKey" />
+                <small class="muted">Configured in <code>appsettings.json</code> (Auth:TeacherCode).</small>
+            </div>
+        }
+        @if (_error is not null)
+        {
+            <p class="msg error" role="alert">@_error</p>
+        }
+        <button type="button" class="btn primary" @onclick="DoSignIn">Continue</button>
+    </section>
+}
+else
+{
+    <section class="card">
+        <h2>Welcome, @State.Player!</h2>
+        <p>What would you like to do today?</p>
+        <div class="actions wrap">
+            <a class="btn primary" href="quizzes">Take a quiz</a>
+            <a class="btn" href="practice">Adaptive practice</a>
+            <a class="btn" href="flashcards">Review flashcards (@Svc.DueCards(State.Player).Length due)</a>
+            <a class="btn" href="learn">Read a lesson</a>
+        </div>
+    </section>
+}
+
+@code {
+    private string _name = "";
+    private Role _role = Role.Student;
+    private string _code = "";
+    private string? _error;
+
+    private void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") DoSignIn();
+    }
+
+    private void DoSignIn() =>
+        Access.SignIn(_name, _role, _code).Switch(
+            user => { _error = null; State.SignIn(user); },
+            error => _error = error.Message);
+}

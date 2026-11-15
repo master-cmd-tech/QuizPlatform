@@ -1,0 +1,128 @@
+<section class="card question" aria-labelledby="q-title">
+    <div class="q-meta">
+        <span class="badge">@Question.Topic</span>
+        <span class="badge diff-@Question.Difficulty.ToString().ToLowerInvariant()">@Question.Difficulty</span>
+        <span class="badge">@Question.Points pts</span>
+        <span class="badge muted-badge">@Presenter.KindLabel(Question)</span>
+    </div>
+
+    <h2 id="q-title">@Question.Text</h2>
+
+    @switch (Question)
+    {
+        case MultipleChoiceQuestion mc:
+            <div class="options" role="radiogroup" aria-labelledby="q-title">
+                @for (var i = 0; i < mc.Options.Length; i++)
+                {
+                    var index = i;
+                    <button type="button" class="option @OptionClass(mc, index)" role="radio"
+                            aria-checked="@(_choice == index ? "true" : "false")"
+                            disabled="@Locked" @onclick="() => _choice = index">
+                        <span class="option-key">@((char)('A' + index))</span>
+                        <span>@mc.Options[index]</span>
+                    </button>
+                }
+            </div>
+            break;
+
+        case TrueFalseQuestion:
+            <div class="options two" role="radiogroup" aria-labelledby="q-title">
+                <button type="button" class="option @BoolClass(true)" role="radio" disabled="@Locked"
+                        aria-checked="@(_bool == true ? "true" : "false")" @onclick="() => _bool = true">True</button>
+                <button type="button" class="option @BoolClass(false)" role="radio" disabled="@Locked"
+                        aria-checked="@(_bool == false ? "true" : "false")" @onclick="() => _bool = false">False</button>
+            </div>
+            break;
+
+        case ShortAnswerQuestion or NumericQuestion:
+            <input class="input" type="text" aria-label="Your answer" disabled="@Locked"
+                   inputmode="@(Question is NumericQuestion ? "decimal" : "text")"
+                   placeholder="@(Question is NumericQuestion ? "Type a number" : "Type your answer")"
+                   @bind="_text" @bind:event="oninput" @onkeydown="OnKey" />
+            break;
+    }
+
+    @if (Feedback is null)
+    {
+        <div class="actions">
+            <button type="button" class="btn primary" disabled="@(BuildAnswer() is null)" @onclick="Submit">Submit answer</button>
+        </div>
+    }
+    else
+    {
+        <div class="feedback @(Feedback.IsCorrect ? "ok" : "bad")" role="status">
+            <strong>@(Feedback.IsCorrect ? $"Correct! +{Feedback.Points} pts" : "Not quite.")</strong>
+            @if (!Feedback.IsCorrect)
+            {
+                <p>Correct answer: <b>@Presenter.DescribeCorrect(Question)</b></p>
+            }
+            @if (!string.IsNullOrWhiteSpace(Question.Explanation))
+            {
+                <p class="muted">@Question.Explanation</p>
+            }
+        </div>
+        <div class="actions">@Actions</div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Question Question { get; set; } = default!;
+    /// <summary>When set, the question is locked and the verdict is shown.</summary>
+    [Parameter] public GradedAnswer? Feedback { get; set; }
+    [Parameter] public EventCallback<Answer> OnSubmit { get; set; }
+    /// <summary>Buttons shown below the feedback (e.g. "Next").</summary>
+    [Parameter] public RenderFragment? Actions { get; set; }
+
+    private string? _lastId;
+    private int _choice = -1;
+    private bool? _bool;
+    private string _text = "";
+
+    private bool Locked => Feedback is not null;
+
+    protected override void OnParametersSet()
+    {
+        if (_lastId != Question.Id)
+        {
+            _lastId = Question.Id;
+            _choice = -1;
+            _bool = null;
+            _text = "";
+        }
+    }
+
+    private Answer? BuildAnswer() => Question switch
+    {
+        MultipleChoiceQuestion when _choice >= 0 => new ChoiceAnswer(_choice),
+        TrueFalseQuestion when _bool.HasValue => new BoolAnswer(_bool.Value),
+        ShortAnswerQuestion or NumericQuestion when !string.IsNullOrWhiteSpace(_text) => new TextAnswer(_text.Trim()),
+        _ => null
+    };
+
+    private async Task Submit()
+    {
+        var answer = BuildAnswer();
+        if (answer is not null && !Locked) await OnSubmit.InvokeAsync(answer);
+    }
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Submit();
+    }
+
+    private string OptionClass(MultipleChoiceQuestion mc, int index)
+    {
+        if (Feedback is null) return _choice == index ? "selected" : "";
+        var chosen = Feedback.Given is ChoiceAnswer c && c.Index == index;
+        if (index == mc.CorrectIndex) return "correct";
+        return chosen ? "wrong" : "";
+    }
+
+    private string BoolClass(bool value)
+    {
+        if (Feedback is null) return _bool == value ? "selected" : "";
+        var correct = Question is TrueFalseQuestion tf && tf.CorrectAnswer == value;
+        var chosen = Feedback.Given is BoolAnswer b && b.Value == value;
+        return correct ? "correct" : chosen ? "wrong" : "";
+    }
+}

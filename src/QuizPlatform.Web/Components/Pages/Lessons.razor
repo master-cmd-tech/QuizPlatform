@@ -1,0 +1,60 @@
+@page "/learn"
+@page "/learn/{Id}"
+@inherits StateAwareComponent
+@inject QuizService Svc
+
+<PageTitle>@(_lesson?.Title ?? "Lessons")</PageTitle>
+
+@if (_lesson is null)
+{
+    <h1>Lessons</h1>
+    <div class="grid cols-2">
+        @foreach (var l in SeedLessons)
+        {
+            <a class="card link-card" href="learn/@l.Id">
+                <span class="badge">@l.Topic</span>
+                <h2>@l.Title</h2>
+                <p class="muted">@l.Summary</p>
+            </a>
+        }
+    </div>
+}
+else
+{
+    <p><a href="learn">← All lessons</a></p>
+    <article class="card lesson">
+        <span class="badge">@_lesson.Topic</span>
+        <h1>@_lesson.Title</h1>
+        <p class="lead">@_lesson.Summary</p>
+        @foreach (var p in _lesson.Paragraphs)
+        {
+            <p>@p</p>
+        }
+        <pre class="code" aria-label="Code example"><code>@_lesson.Code</code></pre>
+    </article>
+
+    @if (Related.Any())
+    {
+        <h2>Test yourself</h2>
+        <div class="actions wrap">
+            @foreach (var q in Related)
+            {
+                <a class="btn primary" href="quiz/@q.Id">@q.Title</a>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public string? Id { get; set; }
+
+    private Lesson? _lesson;
+
+    private static ImmutableArray<Lesson> SeedLessons => QuizPlatform.Core.Content.SeedData.Lessons;
+
+    private IEnumerable<Quiz> Related =>
+        _lesson is null ? Enumerable.Empty<Quiz>() : Svc.Quizzes.Where(q => q.Category == _lesson.Topic);
+
+    protected override void OnParametersSet() =>
+        _lesson = Id is null ? null : SeedLessons.FirstOrDefault(l => l.Id == Id);
+}

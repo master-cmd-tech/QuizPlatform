@@ -1,0 +1,15 @@
+@inherits StateAwareComponent
+
+<ul class="navlist">
+    <li><NavLink href="" Match="NavLinkMatch.All">🏠 Home</NavLink></li>
+    <li><NavLink href="quizzes">📝 Quizzes</NavLink></li>
+    <li><NavLink href="practice">🎯 Adaptive practice</NavLink></li>
+    <li><NavLink href="learn">📚 Lessons</NavLink></li>
+    <li><NavLink href="flashcards">🃏 Flashcards</NavLink></li>
+    <li><NavLink href="leaderboard">🏆 Leaderboard</NavLink></li>
+    <li><NavLink href="stats">📊 My stats</NavLink></li>
+    @if (State.IsTeacher)
+    {
+        <li><NavLink href="create">✍️ Create quiz</NavLink></li>
+    }
+</ul>

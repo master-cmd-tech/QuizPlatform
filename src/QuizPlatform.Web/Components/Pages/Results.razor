@@ -1,0 +1,81 @@
+@page "/results/{Id}"
+@inherits StateAwareComponent
+@inject QuizService Svc
+
+<PageTitle>Results</PageTitle>
+
+@if (_attempt is null)
+{
+    <div class="card">
+        <h1>Result not found</h1>
+        <a class="btn" href="quizzes">Back to quizzes</a>
+    </div>
+}
+else
+{
+    <h1>Results: @_attempt.QuizTitle</h1>
+
+    <section class="card result-hero">
+        <div class="grade" aria-label="Grade @Scoring.Letter(_attempt.Percent)">@Scoring.Letter(_attempt.Percent)</div>
+        <div>
+            <p class="big">@Presenter.Percent(_attempt.Percent)</p>
+            <p>@_attempt.Score / @_attempt.MaxScore points
+               @if (_attempt.Bonus > 0) { <span class="badge ok-badge">+@_attempt.Bonus streak bonus</span> }
+            </p>
+            <p class="muted">@_attempt.Player · @Presenter.Duration(_attempt.Duration)</p>
+        </div>
+    </section>
+
+    <div class="actions wrap">
+        <a class="btn primary" href="quiz/@_attempt.QuizId">Play again</a>
+        <a class="btn" href="leaderboard/@_attempt.QuizId">Leaderboard</a>
+        <a class="btn" href="stats">My stats</a>
+    </div>
+
+    <h2>Review</h2>
+    @for (var i = 0; i < _attempt.Answers.Length; i++)
+    {
+        var a = _attempt.Answers[i];
+        var q = FindQuestion(a.QuestionId);
+        <article class="card review @(a.IsCorrect ? "ok" : "bad")">
+            <div class="q-meta">
+                <span class="badge">#@(i + 1)</span>
+                <span class="badge">@a.Topic</span>
+                <span class="badge">@a.Points / @a.MaxPoints pts</span>
+                <span class="badge">@a.Seconds.ToString("0.#", CultureInfo.InvariantCulture)s</span>
+            </div>
+            @if (q is null)
+            {
+                <p class="muted">The original question was removed.</p>
+            }
+            else
+            {
+                <h3>@q.Text</h3>
+                <p>Your answer: <b>@Presenter.DescribeAnswer(q, a.Given)</b></p>
+                @if (!a.IsCorrect)
+                {
+                    <p>Correct answer: <b>@Presenter.DescribeCorrect(q)</b></p>
+                }
+                @if (!string.IsNullOrWhiteSpace(q.Explanation))
+                {
+                    <p class="muted">@q.Explanation</p>
+                }
+            }
+        </article>
+    }
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+
+    private Attempt? _attempt;
+    private Quiz? _quiz;
+
+    protected override void OnParametersSet()
+    {
+        _attempt = Svc.FindAttempt(Id).GetOrDefault();
+        _quiz = _attempt is null ? null : Svc.FindQuiz(_attempt.QuizId).GetOrDefault();
+    }
+
+    private Question? FindQuestion(string questionId) => _quiz?.Questions.FirstOrDefault(q => q.Id == questionId);
+}

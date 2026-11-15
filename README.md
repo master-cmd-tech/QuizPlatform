@@ -10,7 +10,7 @@ LINQ pipelines, currying, trampolining and lazy sequences.
 
 ## Quick start
 
-Requirements: [.NET 8 SDK](https://dotnet.microsoft.com/download) (Windows, macOS or Linux). No database needed.
+Requirements: [.NET 10 SDK](https://dotnet.microsoft.com/download) (Windows, macOS or Linux). No database needed.
 
 ```bash
 dotnet restore

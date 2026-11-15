@@ -1,0 +1,98 @@
+@page "/create"
+@inherits StateAwareComponent
+@inject QuizService Svc
+
+<PageTitle>Create quiz</PageTitle>
+<h1>Create a quiz</h1>
+
+@if (!State.IsTeacher)
+{
+    <div class="card error" role="alert">
+        <h2>Teachers only</h2>
+        <p>Creating quizzes requires the Teacher role. <a href="">Sign in as a teacher</a>.</p>
+    </div>
+}
+else
+{
+    <p>Write the quiz in the simple text format below, validate it, then save. See the format guide in <code>docs/QUIZ_FORMAT.md</code>.</p>
+
+    <div class="field">
+        <label for="quiz-text">Quiz text</label>
+        <textarea id="quiz-text" class="input code-input" rows="18" spellcheck="false" @bind="_text" @bind:event="oninput"></textarea>
+    </div>
+
+    <div class="actions wrap">
+        <button type="button" class="btn" @onclick="LoadSample">Load sample</button>
+        <button type="button" class="btn" @onclick="Validate">Validate</button>
+        <button type="button" class="btn primary" disabled="@(_busy || _preview is not Validated<Quiz>.ValidCase)" @onclick="Save">Save quiz</button>
+    </div>
+
+    @if (_message is not null)
+    {
+        <p class="msg @(_messageIsError ? "error" : "ok")" role="status">@_message</p>
+    }
+
+    @if (_preview is Validated<Quiz>.InvalidCase invalid)
+    {
+        <div class="card error" role="alert">
+            <h2>@invalid.ErrorList.Length problem(s) found</h2>
+            <ul>
+                @foreach (var e in invalid.ErrorList)
+                {
+                    <li>@e</li>
+                }
+            </ul>
+        </div>
+    }
+    else if (_preview is Validated<Quiz>.ValidCase valid)
+    {
+        <div class="card ok">
+            <h2>Preview: @valid.Value.Title</h2>
+            <p class="muted">@valid.Value.Category · @valid.Value.Questions.Length questions · @valid.Value.MaxScore points</p>
+            <ol>
+                @foreach (var q in valid.Value.Questions)
+                {
+                    <li>@q.Text <span class="badge">@Presenter.KindLabel(q)</span> <span class="badge">@q.Difficulty</span></li>
+                }
+            </ol>
+        </div>
+    }
+}
+
+@code {
+    private string _text = SampleQuiz.Text;
+    private Validated<Quiz>? _preview;
+    [CascadingParameter] public ToastApi? Toasts { get; set; }
+    private string? _message;
+    private bool _messageIsError, _busy;
+
+    private void LoadSample()
+    {
+        _text = SampleQuiz.Text;
+        _preview = null;
+        _message = null;
+    }
+
+    private void Validate()
+    {
+        _preview = Svc.Preview(_text, State.Player);
+        _message = _preview.IsValid ? "The quiz is valid. You can save it." : null;
+        _messageIsError = false;
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        try
+        {
+            var result = await Svc.ImportAsync(_text, State.Player, State.Role);
+            result.Switch(
+                quiz => { Toasts?.Success($"Saved \"{quiz.Title}\"."); _message = null; _preview = null; },
+                error => { _message = error.Message; _messageIsError = true; });
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

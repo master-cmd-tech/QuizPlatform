@@ -1,0 +1,66 @@
+@page "/quizzes"
+@inherits StateAwareComponent
+@inject QuizService Svc
+
+<PageTitle>Quizzes</PageTitle>
+<h1>Quizzes</h1>
+
+<div class="toolbar">
+    <input class="input" type="search" placeholder="Search quizzes..." aria-label="Search quizzes"
+           @bind="_search" @bind:event="oninput" />
+    <select class="input" aria-label="Category" @bind="_category">
+        <option value="">All categories</option>
+        @foreach (var c in Categories)
+        {
+            <option value="@c">@c</option>
+        }
+    </select>
+</div>
+
+<DataList Items="Filtered" TItem="Quiz">
+    <ItemTemplate Context="q">
+        <article class="card quiz-card">
+            <div>
+                <h2>@q.Title</h2>
+                <p class="muted">@q.Description</p>
+                <div class="q-meta">
+                    <span class="badge">@q.Category</span>
+                    <span class="badge">@q.Questions.Length questions</span>
+                    <span class="badge">@q.MaxScore pts</span>
+                    <span class="badge">@(q.SecondsPerQuestion == 0 ? "No timer" : $"{q.SecondsPerQuestion}s / question")</span>
+                </div>
+            </div>
+            <div class="actions">
+                <a class="btn primary" href="quiz/@q.Id">Start</a>
+                <a class="btn" href="leaderboard/@q.Id">Leaderboard</a>
+                @if (State.IsTeacher)
+                {
+                    <button type="button" class="btn danger" @onclick="() => Delete(q)">Delete</button>
+                }
+            </div>
+        </article>
+    </ItemTemplate>
+    <Empty><p class="muted">No quizzes match your filter.</p></Empty>
+</DataList>
+
+@code {
+    private string _search = "";
+    private string _category = "";
+    [CascadingParameter] public ToastApi? Toasts { get; set; }
+
+    private IEnumerable<string> Categories => Svc.Quizzes.Select(q => q.Category).Distinct().Order();
+
+    private IEnumerable<Quiz> Filtered => Svc.Quizzes.Where(q =>
+        (_category == "" || q.Category == _category) &&
+        (string.IsNullOrWhiteSpace(_search)
+         || q.Title.Contains(_search, StringComparison.OrdinalIgnoreCase)
+         || q.Description.Contains(_search, StringComparison.OrdinalIgnoreCase)));
+
+    private async Task Delete(Quiz quiz)
+    {
+        var result = await Svc.DeleteQuizAsync(quiz.Id, State.Role);
+        result.Switch(
+            _ => Toasts?.Success($"Deleted \"{quiz.Title}\"."),
+            error => Toasts?.Error(error.Message));
+    }
+}

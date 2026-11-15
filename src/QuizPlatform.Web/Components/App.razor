@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#4f46e5" />
+    <base href="/" />
+    <link rel="stylesheet" href="app.css" />
+    <HeadOutlet @rendermode="NoPrerender" />
+</head>
+<body>
+    <Routes @rendermode="NoPrerender" />
+    <div id="blazor-error-ui">
+        An unexpected error occurred.
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss" role="button" aria-label="Dismiss">✕</a>
+    </div>
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>
+
+@code {
+    // Interactive Server rendering without prerendering: components initialise once, timers/session storage behave.
+    private static readonly IComponentRenderMode NoPrerender = new InteractiveServerRenderMode(prerender: false);
+}
